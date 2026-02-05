@@ -1,0 +1,21 @@
+import { Module } from '@nestjs/common';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
+import { AuthModule } from './auth/auth.module';
+import { DatabaseModule } from './database/database.module';
+import { AuthController } from './auth/auth.controller';
+import { UploadModule } from './upload/upload.module';
+import { ChatModule } from './chat/chat.module';
+import { ProjectController } from './project/project.controller';
+import { ProjectService } from './project/project.service';
+import { ProjectModule } from './project/project.module';
+import { UserModule } from './user/user.module';
+import { DocTrainModule } from './doc-train/doc-train.module';
+import { IdVerificationModule } from './id-verification/id-verification.module';
+
+@Module({
+  imports: [AuthModule, DatabaseModule, UploadModule, ChatModule, ProjectModule, UserModule, DocTrainModule, IdVerificationModule],
+  controllers: [AppController, AuthController],
+  providers: [AppService, ProjectService],
+})
+export class AppModule { }
