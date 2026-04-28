@@ -4,41 +4,17 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { parse } from 'csv-parse';
 import { QuestionResponseDto } from './dto/question.dto';
+import { EmbeddingService } from 'src/embedding/embedding.service';
+
 @Injectable()
 export class UploadService {
 
-    private model;
-    private modelInitialized = false;
-
     constructor(
         private readonly databaseService: DatabaseService,
-    ) {
-        this.initializeModel().catch((err) => {
-            console.error('Model initialization failed:', err);
-        });
-    }
-
-    private async initializeModel() {
-        const TransformersApi = Function('return import("@xenova/transformers")')();
-        const { pipeline, env } = await TransformersApi;
-        const embeddingModelName = 'Xenova/bge-large-en-v1.5';
-        env.allowRemoteModels = true;
-
-        try {
-            // Initialize the embedding model
-            this.model = await pipeline('feature-extraction', embeddingModelName);
-            this.modelInitialized = true;
-        } catch (error) {
-            console.error("Error initializing models:", error);
-            throw error;
-        }
-    }
+        private readonly embeddingService: EmbeddingService,
+    ) { }
 
     async uploadMulti(projectId: number, file: Express.Multer.File, user: any): Promise<void> {
-        if (!this.modelInitialized) {
-            throw new Error('Model not initialized');
-        }
-
         try {
             const knex = this.databaseService.getKnex();
             const [insertedRow] = await knex('upload_history').insert({
@@ -74,12 +50,6 @@ export class UploadService {
             throw new Error('Failed to upload file');
         }
 
-    }
-
-    public async generateEmbedding(question: string, answer: string): Promise<number[]> {
-        const combinedText = `${question} [SEP] ${answer}`;
-        const result = await this.model(combinedText, { pooling: 'mean', normalize: true });
-        return Array.from(result.data);
     }
 
     // Background processing function
@@ -140,7 +110,7 @@ export class UploadService {
 
     private async processBatch(projectId: number, batch: any[], uploadId: number, userId: number, knex: any) {
         const rowsToInsert = await Promise.all(batch.map(async (item) => {
-            const embedding: number[] = await this.generateEmbedding(item.question, item.answer);
+            const embedding: number[] = await this.embeddingService.generateEmbedding(item.question, item.answer);
             const embeddingArrayString = `[${embedding.join(',')}]`;
             
             return {
@@ -176,7 +146,7 @@ export class UploadService {
             
             if (searchText && searchText.trim()) {
                 const cleanedSearchText = this.cleanText(searchText);
-                const newMessageEmbedding = await this.generateEmbedding(cleanedSearchText, '');
+                const newMessageEmbedding = await this.embeddingService.generateEmbedding(cleanedSearchText, '');
                 embeddingArrayString = `[${newMessageEmbedding.join(', ')}]`;
             }
     
@@ -205,7 +175,7 @@ export class UploadService {
                             similarity(lower(question_text), lower(?)), 
                             similarity(lower(answer_text), lower(?))
                         )
-                    )`, [embeddingArrayString, searchText, searchText])
+                    )`, [embeddingArrayString, searchText, searchText, embeddingArrayString, searchText, searchText])
                 });
 
                 query = query.orderBy('relevance', 'desc');

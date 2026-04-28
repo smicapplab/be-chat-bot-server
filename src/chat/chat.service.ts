@@ -6,12 +6,10 @@ import { CaseUtil } from 'src/utils/case-util';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { ConfigService } from '@nestjs/config';
+import { EmbeddingService } from 'src/embedding/embedding.service';
 
 @Injectable()
 export class ChatService {
-    private model;
-    private modelInitialized = false;
-
     private openai: OpenAI;
 
     private defaultResponse = `Oops! It seems I'm having trouble generating a response at the moment. 
@@ -23,36 +21,11 @@ export class ChatService {
         @Inject(CACHE_MANAGER)
         private cacheManager: Cache,
         private readonly configService: ConfigService,
+        private readonly embeddingService: EmbeddingService,
     ) {
-        this.initializeModel().catch((err) => {
-            console.error('Model initialization failed:', err);
-        });
-
         this.openai = new OpenAI({
             apiKey: this.configService.get<string>('OPENAI_API_KEY'),
         });
-    }
-
-    private async initializeModel() {
-        const TransformersApi = Function('return import("@xenova/transformers")')();
-        const { pipeline, env } = await TransformersApi;
-        const embeddingModelName = 'Xenova/bge-large-en-v1.5';
-        env.allowRemoteModels = true;
-
-        try {
-            // Initialize the embedding model
-            this.model = await pipeline('feature-extraction', embeddingModelName);
-            this.modelInitialized = true;
-        } catch (error) {
-            console.error("Error initializing models:", error);
-            throw error;
-        }
-    }
-
-    public async generateEmbedding(question: string, answer: string): Promise<number[]> {
-        const combinedText = `${question} [SEP] ${answer}`;
-        const result = await this.model(combinedText, { pooling: 'mean', normalize: true });
-        return Array.from(result.data);
     }
 
     private personalities = {
@@ -148,10 +121,6 @@ export class ChatService {
     async search(dto: ChatDto) {
         const { topic, stage, newMessage, messages, isEnhanced, projectId, userId, sessionId, personality = 'professional' } = dto;
 
-        if (!this.modelInitialized) {
-            throw new Error('Embedding model is not initialized');
-        }
-
         const context = messages
             ?.filter((msg) => msg.role === 'user' || msg.role === 'assistant')
             .slice(-5) // Limit context to last 5 messages
@@ -160,7 +129,7 @@ export class ChatService {
 
         const input = context ? `${context} [SEP] ${this.cleanText(newMessage)}` : this.cleanText(newMessage);
 
-        const newMessageEmbedding = await this.generateEmbedding(input, '');
+        const newMessageEmbedding = await this.embeddingService.generateEmbedding(input, '');
         const embeddingArrayString = `[${newMessageEmbedding.join(', ')}]`;
         const knex = this.databaseService.getKnex();
 
@@ -178,7 +147,7 @@ export class ChatService {
               0.65 * (1 - (embedding <=> ?::vector(1024))) +
               0.25 * GREATEST(similarity(lower(question_text), lower(?)), similarity(lower(answer_text), lower(?))) +
               0.10 * GREATEST(1 - EXTRACT(EPOCH FROM NOW() - created_at)/604800, 0)
-          ) as relevance`, [embeddingArrayString, newMessage, newMessage])
+          ) as relevance`, [embeddingArrayString, newMessage, newMessage, embeddingArrayString, newMessage, newMessage])
                 );
 
             // Conditionally add project_id filter
@@ -254,7 +223,7 @@ export class ChatService {
                 finalSessionId = newSession.id;
             }
 
-            const embedding = await this.generateEmbedding(question, answer)
+            const embedding = await this.embeddingService.generateEmbedding(question, answer)
             const embeddingArrayString = `[${embedding.join(',')}]`;
 
             await knex('chat').insert({
@@ -351,7 +320,7 @@ export class ChatService {
         const knex = this.databaseService.getKnex();
         try {
             const input = this.cleanText(keyword);
-            const keywordEmbedding = await this.generateEmbedding(input, '');
+            const keywordEmbedding = await this.embeddingService.generateEmbedding(input, '');
             const embeddingArrayString = `[${keywordEmbedding.join(', ')}]`;
 
             const results = await knex('chat')
@@ -381,7 +350,7 @@ export class ChatService {
         try {
             if (searchText && searchText.trim()) {
                 const cleanedSearchText = this.cleanText(searchText);
-                const newMessageEmbedding = await this.generateEmbedding(cleanedSearchText, '');
+                const newMessageEmbedding = await this.embeddingService.generateEmbedding(cleanedSearchText, '');
                 embeddingArrayString = `[${newMessageEmbedding.join(', ')}]`;
             }
 

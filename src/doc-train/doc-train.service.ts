@@ -12,6 +12,7 @@ import { DocExtractContenUpdateDto, DocExtractDto, TrainingResponseDto } from '.
 import * as csv from 'fast-csv';
 import { Response } from 'express';
 import mime from 'mime-types';
+import { ConfigService } from '@nestjs/config';
 
 const pLimit = require('p-limit');
 
@@ -20,20 +21,21 @@ const pLimit = require('p-limit');
 export class DocTrainService {
     private textractClient: TextractClient;
     private s3Client: S3Client;
-    private readonly region = 'ap-southeast-1';
+    private readonly region: string;
 
     private chatSourceFolder = "chat-source";
     private chatTrainFolder = "chat-train";
 
-    private openaiKey: string;
     private openai: OpenAI;
 
     constructor(
         private readonly databaseService: DatabaseService,
+        private readonly configService: ConfigService,
     ) {
+        this.region = this.configService.get<string>('AWS_REGION') || 'ap-southeast-1';
         const credentials = {
-            accessKeyId: process.env.PRI_AWS_ACCESS_KEY,
-            secretAccessKey: process.env.PRI_AWS_SECRET_KEY,
+            accessKeyId: this.configService.get<string>('PRI_AWS_ACCESS_KEY'),
+            secretAccessKey: this.configService.get<string>('PRI_AWS_SECRET_KEY'),
         }
         this.s3Client = new S3Client({
             region: this.region,
@@ -45,9 +47,8 @@ export class DocTrainService {
             credentials
         });
 
-        this.openaiKey = process.env.OPENAI_API_KEY;
         this.openai = new OpenAI({
-            apiKey: this.openaiKey, // Ensure this environment variable is set
+            apiKey: this.configService.get<string>('OPENAI_API_KEY'),
         });
 
     }
@@ -149,7 +150,7 @@ export class DocTrainService {
             const fileData = fs.readFileSync(filePath);
             const contentType = mime.lookup(file.originalname) || 'application/octet-stream';
             const sourceUploadParams = {
-                Bucket: process.env.AWS_PORTAL_BUCKET,
+                Bucket: this.configService.get<string>('AWS_PORTAL_BUCKET'),
                 Key: `${this.chatSourceFolder}/${sourceFileName}`,
                 Body: fileData,
                 ContentType: contentType,
@@ -310,7 +311,7 @@ export class DocTrainService {
                 const pdfBytes = await newPdf.save();
 
                 const uploadParams = {
-                    Bucket: process.env.AWS_PORTAL_BUCKET,
+                    Bucket: this.configService.get<string>('AWS_PORTAL_BUCKET'),
                     Key: splitKey,
                     Body: pdfBytes,
                     ContentType: 'application/pdf',
@@ -323,7 +324,7 @@ export class DocTrainService {
                 // Now trigger Textract
                 const result = await this.startTextExtractAsync({
                     fileName: splitKey,
-                    bucket: process.env.AWS_PORTAL_BUCKET,
+                    bucket: this.configService.get<string>('AWS_PORTAL_BUCKET'),
                 });
 
                 if (result?.JobId) {
@@ -344,7 +345,7 @@ export class DocTrainService {
                             description,
                         },
                         "process-pdf",
-                        process.env.SQS_CHAT_QUEUE,
+                        this.configService.get<string>('SQS_CHAT_QUEUE'),
                         100 + delayPerRec
                     )
 
@@ -356,7 +357,7 @@ export class DocTrainService {
             }
 
             const sourceUploadParams = {
-                Bucket: process.env.AWS_PORTAL_BUCKET,
+                Bucket: this.configService.get<string>('AWS_PORTAL_BUCKET'),
                 Key: `${this.chatSourceFolder}/${sourceFileName}`,
                 Body: fileData,
                 ContentType: 'application/pdf',

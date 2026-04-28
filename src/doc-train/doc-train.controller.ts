@@ -33,26 +33,18 @@ export class DocTrainController {
         @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number = 1,
         @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number = 10,
     ): Promise<{ success?: boolean; data?: TrainingResponseDto[]; pagination?: { total: number; page: number; limit: number; pages: number }; message?: string }> {
-        try {
-            const { trainings, total } = await this.docTrainService.getDocTrainings(page, limit);
+        const { trainings, total } = await this.docTrainService.getDocTrainings(page, limit);
 
-            return {
-              success: true,
-              data: trainings,
-              pagination: {
+        return {
+            success: true,
+            data: trainings,
+            pagination: {
                 total,
                 page,
                 limit,
                 pages: Math.ceil(total / limit)
-              }
-            };
-            
-        } catch (error) {
-            return {
-                success: false,
-                message: 'Could not retrieve training: ' + error.message,
-            };
-        }
+            }
+        };
     } 
 
     @UseGuards(JwtAuthGuard)
@@ -61,21 +53,7 @@ export class DocTrainController {
         @Param('trainingId', ParseIntPipe) trainingId: number,
         @Res() res: any
     ): Promise<void> {
-        try {
-            await this.docTrainService.downloadTrainingQnA(trainingId, res);
-        } catch (error) {
-            console.error(`Error in downloadDocTrain controller for ID ${trainingId}:`, error);
-
-            // Only set status if headers haven't been sent yet
-            if (!res.headersSent) {
-                res.status(error.status || 500);
-                res.json({
-                    statusCode: error.status || 500,
-                    message: error.message || 'Internal server error',
-                    error: error.name || 'UnknownError'
-                });
-            }
-        }
+        await this.docTrainService.downloadTrainingQnA(trainingId, res);
     }
 
     @UseGuards(JwtAuthGuard)
@@ -85,27 +63,19 @@ export class DocTrainController {
         @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number = 1,
         @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number = 10,
     ): Promise<{ success?: boolean; data?: DocExtractDto[]; training?: TrainingResponseDto, pagination?: { total: number; page: number; limit: number; pages: number }; message?: string }> {
-        try {
-            const { extracts, total, training } = await this.docTrainService.getDocExtract(page, limit, trainingId);
+        const { extracts, total, training } = await this.docTrainService.getDocExtract(page, limit, trainingId);
 
-            return {
-              success: true,
-              training,
-              data: extracts,
-              pagination: {
+        return {
+            success: true,
+            training,
+            data: extracts,
+            pagination: {
                 total,
                 page,
                 limit,
                 pages: Math.ceil(total / limit)
-              }
-            };
-            
-        } catch (error) {
-            return {
-                success: false,
-                message: 'Could not retrieve extracts: ' + error.message,
-            };
-        }
+            }
+        };
     } 
 
     @UseGuards(JwtAuthGuard)
@@ -114,15 +84,8 @@ export class DocTrainController {
         @Param('docExtractId', ParseIntPipe) docExtractId: number,
         @Body() dto: DocExtractContenUpdateDto
     ): Promise<{ success?: boolean; message?: string }> {
-        try {
-            await this.docTrainService.updateDocExtract(dto);
-            return { success: true }
-        } catch (error) {
-            return {
-                success: false,
-                message: 'Could not update extract content: ' + error.message,
-            };
-        }
+        await this.docTrainService.updateDocExtract(dto);
+        return { success: true }
     } 
     
 }

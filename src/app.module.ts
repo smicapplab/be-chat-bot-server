@@ -13,10 +13,12 @@ import { ProjectModule } from './project/project.module';
 import { UserModule } from './user/user.module';
 import { DocTrainModule } from './doc-train/doc-train.module';
 import { IdVerificationModule } from './id-verification/id-verification.module';
+import { EmbeddingModule } from './embedding/embedding.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    EmbeddingModule,
     AuthModule,
     DatabaseModule,
     UploadModule,

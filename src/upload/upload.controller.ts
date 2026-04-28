@@ -34,15 +34,7 @@ export class UploadController {
     async deleteUploadQuestions(
         @Param('fileHistId', ParseIntPipe) fileHistId: number,
     ): Promise<{ success?: boolean; message?: string }> {
-        try {
-            const result = await this.uploadService.deleteUploadQuestions(fileHistId);
-            return result;
-        } catch (error) {
-            return {
-                success: false,
-                message: 'Could not delete project: ' + error.message,
-            };
-        }
+        return this.uploadService.deleteUploadQuestions(fileHistId);
     }
 
     @UseGuards(JwtAuthGuard)
@@ -53,24 +45,17 @@ export class UploadController {
         @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number = 1,
         @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number = 10,
     ): Promise<{ success?: boolean; data?: QuestionResponseDto[]; pagination?: any; message?: string }> {
-        try {
-            const { questions, total } = await this.uploadService.getUploadQuestions(fileHistId, searchText, page, limit);
+        const { questions, total } = await this.uploadService.getUploadQuestions(fileHistId, searchText, page, limit);
 
-            return {
-                success: true,
-                data: questions,
-                pagination: {
-                    total,
-                    page,
-                    limit,
-                    pages: Math.ceil(total / limit)
-                }
-            };
-        } catch (error) {
-            return {
-                success: false,
-                message: 'Could not retrieve questions: ' + error.message,
-            };
-        }
+        return {
+            success: true,
+            data: questions,
+            pagination: {
+                total,
+                page,
+                limit,
+                pages: Math.ceil(total / limit)
+            }
+        };
     }
 }

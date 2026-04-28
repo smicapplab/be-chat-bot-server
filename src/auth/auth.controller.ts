@@ -13,30 +13,14 @@ export class AuthController {
     async authenticateSocial(
         @Body() dto: UserRequestDto
     ): Promise<LoginResponseDto> {
-        try {
-            const response = await this.authService.authenticateSocial(dto)
-            return response;
-        } catch (error) {
-            return {
-                success: false,
-                message: error.message || "Authentication Error"
-            }
-        }
+        return this.authService.authenticateSocial(dto);
     }
 
     @Post('/login-with-email')
     async loginWithEmail(
         @Body() dto: { email: string; password: string; }
     ): Promise<LoginResponseDto> {
-        try {
-            const response = await this.authService.loginWithEmail(dto);
-            return response;
-        } catch (error) {
-            return {
-                success: false,
-                message: error.message || "Authentication Error"
-            }
-        }
+        return this.authService.loginWithEmail(dto);
     }
 
     @Post("/forgot-password")

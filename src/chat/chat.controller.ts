@@ -13,14 +13,9 @@ export class ChatController {
     async search(
         @Body() dto: ChatDto
     ) {
-        try {
-            const result = await this.chatService.search(dto);
-            console.log(result)
-            return { ...result, message: "" }
-        } catch (error) {
-            console.error(error)
-            return { success: false, result: "", message: "Something went wrong.  Please try again." }
-        }
+        const result = await this.chatService.search(dto);
+        console.log(result)
+        return { ...result, message: "" }
     }
 
     @UseGuards(JwtAuthGuard)
@@ -28,13 +23,8 @@ export class ChatController {
     async searchSessionByKeyword(
         @Body() dto: { keyword: string }
     ) {
-        try {
-            const sessions = await this.chatService.searchSessionByKeyword(dto.keyword);
-            return { success: true, sessions }
-        } catch (error) {
-            console.error(error)
-            return { success: false, result: "", message: "Something went wrong.  Please try again." }
-        }
+        const sessions = await this.chatService.searchSessionByKeyword(dto.keyword);
+        return { success: true, sessions }
     }
 
     @UseGuards(JwtAuthGuard)
@@ -42,13 +32,8 @@ export class ChatController {
     async getSessionByTitle(
         @Body() dto: { title: string }
     ) {
-        try {
-            const session = await this.chatService.getSessionByTitle(dto.title);
-            return { success: true, session }
-        } catch (error) {
-            console.error(error)
-            return { success: false, message: "Something went wrong.  Please try again." }
-        }
+        const session = await this.chatService.getSessionByTitle(dto.title);
+        return { success: true, session }
     }
 
     @UseGuards(JwtAuthGuard)
@@ -56,13 +41,8 @@ export class ChatController {
     async getSessionById(
         @Body() dto: { id: number }
     ) {
-        try {
-            const session = await this.chatService.getSessionById(dto.id);
-            return { success: true, session }
-        } catch (error) {
-            console.error(error)
-            return { success: false, message: "Something went wrong.  Please try again." }
-        }
+        const session = await this.chatService.getSessionById(dto.id);
+        return { success: true, session }
     }
 
     @UseGuards(JwtAuthGuard)
