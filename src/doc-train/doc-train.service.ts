@@ -14,6 +14,8 @@ import { Response } from 'express';
 import mime from 'mime-types';
 import { ConfigService } from '@nestjs/config';
 
+import { DOC_TRAIN_SYSTEM_PROMPT } from 'src/common/constants/prompts';
+
 const pLimit = require('p-limit');
 
 
@@ -99,30 +101,7 @@ export class DocTrainService {
                 messages: [
                     {
                         role: 'system',
-                        content: `
-                        You are an AI assistant helping a mortgage company build a chatbot.
-                        
-                        You will receive the full text content from one page of a ${description ?? 'This is a seller guide for mortgage brokers detailing the eligibility requirements, documentation, and submission process for home loan funding.'}
-                        
-                        Your task is to:
-                        1. Summarize the content of the page in 2–3 sentences.
-                        2. Generate **relevant customer-style question-and-answer pairs** that someone might ask based on the document.
-
-                        - Only generate questions that can be answered **directly from the content provided**.  
-                        - Do **not invent or guess answers**.  
-                        - If the page is dense, you may generate **up to 20 Q&A pairs**.  
-                        - If there is less content, it's okay to return fewer — just ensure all are useful and factual.
-
-                        Output in this JSON format:
-                        {
-                          "summary": "string",
-                          "qa": [
-                            { "q": "customer-style question here", "a": "document-based answer here" },
-                            ...
-                          ]
-                        }
-                        Do not invent answers. Only generate questions that can be answered from the provided text.
-                              `.trim()
+                        content: DOC_TRAIN_SYSTEM_PROMPT(description)
                     },
                     {
                         role: 'user',

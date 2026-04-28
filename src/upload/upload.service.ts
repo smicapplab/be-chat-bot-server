@@ -5,6 +5,7 @@ import * as path from 'path';
 import { parse } from 'csv-parse';
 import { QuestionResponseDto } from './dto/question.dto';
 import { EmbeddingService } from 'src/embedding/embedding.service';
+import { TextUtil } from 'src/utils/text-util';
 
 @Injectable()
 export class UploadService {
@@ -130,10 +131,6 @@ export class UploadService {
         await knex('question').insert(rowsToInsert);
     }
 
-    cleanText(input?: string): string {
-        return (input ?? '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
-    }
-
     async getUploadQuestions(
         fileHistId: number,
         searchText?: string,
@@ -145,7 +142,7 @@ export class UploadService {
             let embeddingArrayString = null;
             
             if (searchText && searchText.trim()) {
-                const cleanedSearchText = this.cleanText(searchText);
+                const cleanedSearchText = TextUtil.cleanText(searchText);
                 const newMessageEmbedding = await this.embeddingService.generateEmbedding(cleanedSearchText, '');
                 embeddingArrayString = `[${newMessageEmbedding.join(', ')}]`;
             }

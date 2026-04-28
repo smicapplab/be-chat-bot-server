@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ProjectController } from './project.controller';
 import { ProjectService } from './project.service';
+import { ProjectRepository } from './project.repository';
 import { JwtModule } from '@nestjs/jwt';
 import { DatabaseService } from 'src/database/database.service';
 
@@ -11,7 +12,7 @@ import { DatabaseService } from 'src/database/database.service';
       signOptions: { expiresIn: '1h' },
     }),
   ],
-  providers: [ProjectService, DatabaseService],
+  providers: [ProjectService, ProjectRepository, DatabaseService],
   controllers: [ProjectController],
 })
 export class ProjectModule { }

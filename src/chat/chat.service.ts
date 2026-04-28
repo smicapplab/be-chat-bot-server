@@ -7,6 +7,8 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { ConfigService } from '@nestjs/config';
 import { EmbeddingService } from 'src/embedding/embedding.service';
+import { TextUtil } from 'src/utils/text-util';
+import { CHAT_SYSTEM_PROMPT, CHAT_USER_PROMPT } from 'src/common/constants/prompts';
 
 @Injectable()
 export class ChatService {
@@ -28,32 +30,6 @@ export class ChatService {
         });
     }
 
-    private personalities = {
-        professional: `
-      Use a polished, businesslike tone. Be formal, direct, and informative. Avoid slang or overly casual expressions
-        `.trim(),
-
-        conversational: `
-      Speak naturally and clearly — like you're explaining something to a friend. Be warm, human, and easy to follow, while remaining professional
-        `.trim(),
-
-        playful: `
-      Be friendly, lighthearted, and upbeat. You can use mild humor or informal phrasing, but still deliver accurate and helpful info
-        `.trim(),
-
-        harryPotter: `
-      Adopt the tone of a wise and whimsical wizard from the world of Harry Potter and use Harry expressions. You may reference magical terms, speak with curiosity, and weave in charm, but keep answers relevant and helpful
-        `.trim(),
-
-        vision: `
-      Speak like Vision from Marvel — articulate, composed, and intelligent. Use precise language and subtle wit and use marvel vision expressions. Sound deeply thoughtful and courteous
-        `.trim(),
-
-        olaf: `
-      Respond with Olaf’s sweet, naive charm. Be bubbly, overly excited, and endearing, and use disney's olaf expressions while still answering the user's questions truthfully and helpfully
-        `.trim(),
-    };
-
     private async generateResponse(question: string, result: any[], personality: string, description: string): Promise<any> {
         try {
 
@@ -68,20 +44,11 @@ export class ChatService {
                 messages: [
                     {
                         role: 'system',
-                        content: `${this.personalities[personality]} ${description}`.trim(),
+                        content: CHAT_SYSTEM_PROMPT(personality, description),
                     },
                     {
                         role: 'user',
-                        content: `
-                            The user asked: "${question}". 
-    
-                            Below are the possible answers retrieved from an embedding-based similarity search. Combine these answers into a single, coherent, and contextually appropriate response that directly addresses the user's question.
-    
-                            Here are some previously answered Q&A pairs related to the user's question:
-                            ${formattedAnswers}
-    
-                            Use the most relevant answers to craft a clear, concise, and well-structured response. Do not include irrelevant information. If any information is contradictory, prioritize the more relevant and accurate response.
-                        `,
+                        content: CHAT_USER_PROMPT(question, formattedAnswers),
                     },
                 ],
                 max_tokens: 2000,
@@ -124,10 +91,10 @@ export class ChatService {
         const context = messages
             ?.filter((msg) => msg.role === 'user' || msg.role === 'assistant')
             .slice(-5) // Limit context to last 5 messages
-            .map((msg) => this.cleanText(msg.content))
+            .map((msg) => TextUtil.cleanText(msg.content))
             .join(' [SEP] ') || '';
 
-        const input = context ? `${context} [SEP] ${this.cleanText(newMessage)}` : this.cleanText(newMessage);
+        const input = context ? `${context} [SEP] ${TextUtil.cleanText(newMessage)}` : TextUtil.cleanText(newMessage);
 
         const newMessageEmbedding = await this.embeddingService.generateEmbedding(input, '');
         const embeddingArrayString = `[${newMessageEmbedding.join(', ')}]`;
@@ -319,7 +286,7 @@ export class ChatService {
     async searchSessionByKeyword(keyword: string): Promise<any[]> {
         const knex = this.databaseService.getKnex();
         try {
-            const input = this.cleanText(keyword);
+            const input = TextUtil.cleanText(keyword);
             const keywordEmbedding = await this.embeddingService.generateEmbedding(input, '');
             const embeddingArrayString = `[${keywordEmbedding.join(', ')}]`;
 
@@ -349,7 +316,7 @@ export class ChatService {
 
         try {
             if (searchText && searchText.trim()) {
-                const cleanedSearchText = this.cleanText(searchText);
+                const cleanedSearchText = TextUtil.cleanText(searchText);
                 const newMessageEmbedding = await this.embeddingService.generateEmbedding(cleanedSearchText, '');
                 embeddingArrayString = `[${newMessageEmbedding.join(', ')}]`;
             }
