@@ -1,16 +1,22 @@
+import { Injectable } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { SendMessageCommand, SQSClient } from "@aws-sdk/client-sqs";
 
-export class SqsUtil {
+@Injectable()
+export class SqsService {
+    private sqsClient: SQSClient;
 
-    private static sqsClient = new SQSClient({
-        region: "ap-southeast-1",
-        credentials: {
-            accessKeyId: process.env.PRI_AWS_ACCESS_KEY,
-            secretAccessKey: process.env.PRI_AWS_SECRET_KEY,
-        },
-    });
+    constructor(private readonly configService: ConfigService) {
+        this.sqsClient = new SQSClient({
+            region: this.configService.get<string>("AWS_REGION") || "ap-southeast-1",
+            credentials: {
+                accessKeyId: this.configService.get<string>("PRI_AWS_ACCESS_KEY"),
+                secretAccessKey: this.configService.get<string>("PRI_AWS_SECRET_KEY"),
+            },
+        });
+    }
 
-    static async sendSQSMessage(
+    async sendSQSMessage(
         dto: any,
         action: string,
         queueUrl: string,

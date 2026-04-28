@@ -10,6 +10,9 @@ import { EmbeddingService } from 'src/embedding/embedding.service';
 import { TextUtil } from 'src/utils/text-util';
 import { CHAT_SYSTEM_PROMPT, CHAT_USER_PROMPT } from 'src/common/constants/prompts';
 
+/**
+ * Service handling chat operations, AI response generation, and search.
+ */
 @Injectable()
 export class ChatService {
     private openai: OpenAI;
@@ -30,6 +33,14 @@ export class ChatService {
         });
     }
 
+    /**
+     * Generates a chat response using OpenAI based on the provided question and context results.
+     * @param question The user's question.
+     * @param result Context results from the database.
+     * @param personality Desired personality of the AI.
+     * @param description Project description.
+     * @returns AI-generated response string.
+     */
     private async generateResponse(question: string, result: any[], personality: string, description: string): Promise<any> {
         try {
 
@@ -62,8 +73,14 @@ export class ChatService {
         }
     }
 
+    /**
+     * Retrieves the description for a project, with caching support.
+     * @param projectId ID of the project.
+     * @returns Project description string.
+     */
     async getProjectDescription(projectId: number): Promise<string> {
-        const defaultDesc = 'You are an internal assistant supporting the Voice team. You assist internal users (not customers) with clear, concise, and context-aware answers related to mortgage, real estate, or financial services. You speak as a member of the team and always use "we," "our," and "us" instead of referring to Bot in third person. If unsure, politely suggest reaching out via our contact page. Contact info is info@gmail.com.'
+        const supportEmail = this.configService.get<string>('SUPPORT_EMAIL') || 'info@gmail.com';
+        const defaultDesc = `You are an internal assistant supporting the Voice team. You assist internal users (not customers) with clear, concise, and context-aware answers related to mortgage, real estate, or financial services. You speak as a member of the team and always use "we," "our," and "us" instead of referring to Bot in third person. If unsure, politely suggest reaching out via our contact page. Contact info is ${supportEmail}.`
         try {
             const cached = await this.cacheManager.get<string>(projectId.toString());
             if (cached) return cached;
@@ -85,6 +102,11 @@ export class ChatService {
         }
     }
 
+    /**
+     * Performs a semantic search for the user's message and returns relevant answers or an AI-generated response.
+     * @param dto Chat data including message, project, and session details.
+     * @returns Search results including the response and sources.
+     */
     async search(dto: ChatDto) {
         const { topic, stage, newMessage, messages, isEnhanced, projectId, userId, sessionId, personality = 'professional' } = dto;
 
@@ -165,6 +187,10 @@ export class ChatService {
         }
     }
 
+    /**
+     * Saves chat history and creates a new session if necessary.
+     * @returns The ID of the session.
+     */
     async saveHistory(
         topic: string,
         stage: string,
@@ -212,6 +238,11 @@ export class ChatService {
         }
     }
 
+    /**
+     * Retrieves a chat session by its title.
+     * @param title Session title.
+     * @returns The session object or null.
+     */
     async getSessionByTitle(title: string): Promise<any | null> {
         const knex = this.databaseService.getKnex();
         try {
@@ -232,6 +263,11 @@ export class ChatService {
         }
     }
 
+    /**
+     * Retrieves a chat session and its associated chats by session ID.
+     * @param id Session ID.
+     * @returns The session object with chats or null.
+     */
     async getSessionById(id: number): Promise<any | null> {
         const knex = this.databaseService.getKnex();
         try {
@@ -269,6 +305,11 @@ export class ChatService {
         }
     }
 
+    /**
+     * Retrieves recent chat sessions for a given user.
+     * @param userId User ID.
+     * @returns List of recent sessions.
+     */
     async getRecentSessionsByUser(userId: number): Promise<any[]> {
         const knex = this.databaseService.getKnex();
         const sessions = await knex('session')
@@ -279,10 +320,11 @@ export class ChatService {
         return sessions;
     }
 
-    cleanText(input?: string): string {
-        return (input ?? '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
-    }
-
+    /**
+     * Searches for chat sessions based on a keyword using semantic similarity.
+     * @param keyword Search keyword.
+     * @returns List of matching sessions.
+     */
     async searchSessionByKeyword(keyword: string): Promise<any[]> {
         const knex = this.databaseService.getKnex();
         try {
@@ -308,6 +350,12 @@ export class ChatService {
         }
     }
 
+    /**
+     * Retrieves all chat sessions with optional semantic search and pagination.
+     * @param searchText Search text for filtering.
+     * @param page Page number for pagination.
+     * @returns List of sessions.
+     */
     async getAllSessions(searchText: string, page: number): Promise<any[]> {
         const knex = this.databaseService.getKnex();
         let embeddingArrayString = null;

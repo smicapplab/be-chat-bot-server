@@ -1,12 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { DatabaseService } from 'src/database/database.service';
-import * as fs from 'fs';
+import * as fs from 'fs/promises';
+import { existsSync } from 'fs';
 import * as path from 'path';
 import { parse } from 'csv-parse';
 import { QuestionResponseDto } from './dto/question.dto';
 import { EmbeddingService } from 'src/embedding/embedding.service';
 import { TextUtil } from 'src/utils/text-util';
 
+/**
+ * Service for handling file uploads, CSV processing, and managing uploaded questions.
+ */
 @Injectable()
 export class UploadService {
 
@@ -15,6 +19,12 @@ export class UploadService {
         private readonly embeddingService: EmbeddingService,
     ) { }
 
+    /**
+     * Handles multi-file uploads for a project.
+     * @param projectId ID of the project.
+     * @param file The uploaded file.
+     * @param user The user performing the upload.
+     */
     async uploadMulti(projectId: number, file: Express.Multer.File, user: any): Promise<void> {
         try {
             const knex = this.databaseService.getKnex();
@@ -30,13 +40,13 @@ export class UploadService {
             setImmediate(async () => {
                 try {
                     // Read the file data
-                    const fileData = fs.readFileSync(filePath);
+                    const fileData = await fs.readFile(filePath);
                     // Process the CSV data in the background
                     await this.processCsvDataInBackground(projectId, fileData, insertedRow, user.id);
 
                     // Ensure the file exists before deleting
-                    if (fs.existsSync(filePath)) {
-                        fs.unlinkSync(filePath); // Delete the file after processing
+                    if (existsSync(filePath)) {
+                        await fs.unlink(filePath); // Delete the file after processing
                     } else {
                         console.error('File does not exist:', filePath);
                     }
@@ -53,7 +63,13 @@ export class UploadService {
 
     }
 
-    // Background processing function
+    /**
+     * Internal method to process CSV data in the background.
+     * @param projectId Project ID.
+     * @param data CSV file data.
+     * @param uploadHistory Upload history record.
+     * @param userId ID of the user.
+     */
     private async processCsvDataInBackground(projectId: number, data: Uint8Array, uploadHistory: any, userId: number) {
         const knex = this.databaseService.getKnex();
         try {
@@ -109,6 +125,14 @@ export class UploadService {
         }
     }
 
+    /**
+     * Processes a batch of questions, generates embeddings, and inserts them into the database.
+     * @param projectId Project ID.
+     * @param batch Batch of questions and answers.
+     * @param uploadId ID of the upload history.
+     * @param userId ID of the user.
+     * @param knex Knex instance.
+     */
     private async processBatch(projectId: number, batch: any[], uploadId: number, userId: number, knex: any) {
         const rowsToInsert = await Promise.all(batch.map(async (item) => {
             const embedding: number[] = await this.embeddingService.generateEmbedding(item.question, item.answer);
@@ -131,6 +155,14 @@ export class UploadService {
         await knex('question').insert(rowsToInsert);
     }
 
+    /**
+     * Retrieves questions for a given upload history, optionally filtered by search text with similarity search.
+     * @param fileHistId ID of the upload history.
+     * @param searchText Optional search text.
+     * @param page Page number.
+     * @param limit Number of items per page.
+     * @returns Paginated list of questions and total count.
+     */
     async getUploadQuestions(
         fileHistId: number,
         searchText?: string,
@@ -222,6 +254,11 @@ export class UploadService {
         }
     }
 
+    /**
+     * Deletes questions and upload history for a given ID.
+     * @param fileHistId ID of the upload history.
+     * @returns Success status and a message.
+     */
     async deleteUploadQuestions(fileHistId: number): Promise<{ success: boolean; message?: string }> {
         try {
             const knex = this.databaseService.getKnex();

@@ -9,17 +9,26 @@ import { DatabaseService } from 'src/database/database.service';
 import { UserRequestDto } from './dto/user-request.dto';
 import { CaseUtil } from 'src/utils/case-util';
 import { PasswordUtil } from 'src/utils/password-util';
-import { EmailUtil } from 'src/utils/email-util';
+import { EmailService } from 'src/utils/email-util';
 import { randomBytes } from 'crypto';
 
+/**
+ * Service handling authentication, login, and password management.
+ */
 @Injectable()
 export class AuthService {
   constructor(
     private readonly jwtService: JwtService,
     private readonly databaseService: DatabaseService,
     private readonly configService: ConfigService,
+    private readonly emailService: EmailService,
   ) { }
 
+  /**
+   * Authenticates a user via social login providers.
+   * @param dto Data containing user email.
+   * @returns Success status and a JWT token.
+   */
   async authenticateSocial(dto: UserRequestDto): Promise<{ success: boolean; jwt: string }> {
     const { email } = dto;
     const knex = this.databaseService.getKnex();
@@ -81,6 +90,11 @@ export class AuthService {
     }
   }
 
+  /**
+   * Logins a user using email and password.
+   * @param dto Login credentials.
+   * @returns Success status and a JWT token.
+   */
   async loginWithEmail(dto: { email: string; password: string; }): Promise<{ success: boolean; jwt: string }> {
     const knex = this.databaseService.getKnex();
     try {
@@ -146,6 +160,11 @@ export class AuthService {
     }
   }
 
+  /**
+   * Changes the user's password using a reset code.
+   * @param dto Reset code and new password.
+   * @returns Success status and a message.
+   */
   async changePassword(dto: { resetCode: string, newPassword: string }): Promise<{ success: boolean; message?: string }> {
     const knex = this.databaseService.getKnex();
     try {
@@ -177,6 +196,11 @@ export class AuthService {
     }
   }
 
+  /**
+   * Initiates the forgot password process by generating a reset code and sending an email.
+   * @param dto User's email address.
+   * @returns Success status or an error message.
+   */
   async forgotPassword(dto: { email: string }): Promise<{ success: boolean; message?: string }> {
     const knex = this.databaseService.getKnex();
     try {
@@ -230,7 +254,7 @@ export class AuthService {
           </div>
         `;
 
-      EmailUtil.sendEmail({
+      await this.emailService.sendEmail({
         to: [dto.email],
         htmlBody,
         subject: "Reset Your Bot Chat Password",

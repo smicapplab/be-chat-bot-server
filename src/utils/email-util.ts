@@ -1,7 +1,15 @@
-import { SqsUtil } from "./sqs-util";
-export class EmailUtil {
+import { Injectable } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { SqsService } from "./sqs-util";
 
-    static async sendEmail(
+@Injectable()
+export class EmailService {
+    constructor(
+        private readonly sqsService: SqsService,
+        private readonly configService: ConfigService,
+    ) { }
+
+    async sendEmail(
         dto: {
             to: string[],
             cc?: string[],
@@ -11,7 +19,8 @@ export class EmailUtil {
         }
     ): Promise<Boolean> {
         try {
-            await SqsUtil.sendSQSMessage(dto, "send-email", process.env.SQS_EMAIL_QUEUE)
+            const queueUrl = this.configService.get<string>("SQS_EMAIL_QUEUE");
+            await this.sqsService.sendSQSMessage(dto, "send-email", queueUrl)
             return true;
         } catch (error) {
             console.error(error);

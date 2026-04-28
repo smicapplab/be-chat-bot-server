@@ -4,11 +4,14 @@ import {
     UploadedFiles,
     UseInterceptors,
     BadRequestException,
+    UseGuards,
 } from '@nestjs/common';
 import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import { IdVerificationService } from './id-verification.service';
+import { JwtAuthGuard } from 'src/utils/jwt-auth.guard';
 
 @Controller('id-verification')
+@UseGuards(JwtAuthGuard)
 export class IdVerificationController {
     constructor(private readonly service: IdVerificationService) {}
 

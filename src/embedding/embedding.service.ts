@@ -1,5 +1,8 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 
+/**
+ * Service for generating text embeddings using transformers.
+ */
 @Injectable()
 export class EmbeddingService implements OnModuleInit {
     private model: any;
@@ -9,6 +12,9 @@ export class EmbeddingService implements OnModuleInit {
         await this.initializeModel();
     }
 
+    /**
+     * Initializes the embedding model using @xenova/transformers.
+     */
     private async initializeModel() {
         if (this.modelInitialized) return;
 
@@ -28,6 +34,12 @@ export class EmbeddingService implements OnModuleInit {
         }
     }
 
+    /**
+     * Generates an embedding vector for the provided text(s).
+     * @param text1 Primary text.
+     * @param text2 Optional secondary text to be combined with [SEP].
+     * @returns Array of numbers representing the embedding.
+     */
     async generateEmbedding(text1: string, text2: string = ''): Promise<number[]> {
         if (!this.modelInitialized) {
             await this.initializeModel();

@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { DatabaseService } from 'src/database/database.service';
-import * as fs from 'fs';
+import * as fs from 'fs/promises';
+import { existsSync, readFileSync } from 'fs';
 import * as path from 'path';
 import { PDFDocument } from 'pdf-lib';
 import { FeatureType, StartDocumentAnalysisCommand, StartDocumentAnalysisCommandOutput, StartDocumentTextDetectionCommand, StartDocumentTextDetectionCommandOutput, TextractClient } from '@aws-sdk/client-textract';
-import { SqsUtil } from 'src/utils/sqs-util';
+import { SqsService } from 'src/utils/sqs-util';
 import * as mammoth from 'mammoth';
 import { OpenAI } from 'openai';
 import { DocExtractContenUpdateDto, DocExtractDto, TrainingResponseDto } from './dto/training.dto';
@@ -19,6 +20,9 @@ import { DOC_TRAIN_SYSTEM_PROMPT } from 'src/common/constants/prompts';
 const pLimit = require('p-limit');
 
 
+/**
+ * Service for processing documents (PDF, DOCX) for training, using AWS Textract, S3, and OpenAI.
+ */
 @Injectable()
 export class DocTrainService {
     private textractClient: TextractClient;
@@ -33,6 +37,7 @@ export class DocTrainService {
     constructor(
         private readonly databaseService: DatabaseService,
         private readonly configService: ConfigService,
+        private readonly sqsService: SqsService,
     ) {
         this.region = this.configService.get<string>('AWS_REGION') || 'ap-southeast-1';
         const credentials = {
@@ -55,6 +60,12 @@ export class DocTrainService {
 
     }
 
+    /**
+     * Uploads a file for training and initiates background processing.
+     * @param file The file to upload.
+     * @param description Description of the training data.
+     * @param user The user performing the upload.
+     */
     async uploadForTraining(file: Express.Multer.File, description: string, user: any): Promise<void> {
         try {
             setImmediate(async () => {
@@ -94,6 +105,12 @@ export class DocTrainService {
         }
     };
 
+    /**
+     * Processes a text chunk with OpenAI to generate summary and Q&A pairs.
+     * @param text Text chunk to process.
+     * @param description Project description context.
+     * @returns Parsed JSON with summary and Q&A.
+     */
     private processDocument = async (text: string, description: string) => {
         try {
             const response = await this.openai.chat.completions.create({
@@ -121,12 +138,18 @@ export class DocTrainService {
         }
     };
 
+    /**
+     * Processes a DOCX/DOC file, extracts text, generates Q&A via OpenAI, and saves to database.
+     * @param file The document file.
+     * @param description Context description.
+     * @param user User performing the operation.
+     */
     async processDocForQa(file: Express.Multer.File, description: string, user: any): Promise<void> {
         const knex = this.databaseService.getKnex();
         const sourceFileName = `${Date.now()}-${file.originalname}`
         try {
             const filePath = path.resolve(file.path);
-            const fileData = fs.readFileSync(filePath);
+            const fileData = await fs.readFile(filePath);
             const contentType = mime.lookup(file.originalname) || 'application/octet-stream';
             const sourceUploadParams = {
                 Bucket: this.configService.get<string>('AWS_PORTAL_BUCKET'),
@@ -184,7 +207,7 @@ export class DocTrainService {
                     summary: docSummary || 'Summary not available'
                 });
 
-            fs.unlinkSync(filePath);
+            await fs.unlink(filePath);
             console.log("Document processed...")
         } catch (error) {
             console.error(error)
@@ -210,7 +233,10 @@ export class DocTrainService {
         return chunks;
     }
 
-
+    /**
+     * Starts an asynchronous text extraction job on AWS Textract.
+     * @returns Textract detection output.
+     */
     async startTextExtractAsync({
         fileName,
         bucket,
@@ -234,6 +260,10 @@ export class DocTrainService {
         }
     }
 
+    /**
+     * Starts an asynchronous document analysis job (forms/tables) on AWS Textract.
+     * @returns Textract analysis output.
+     */
     async startTextExtractAnalysisAsync({
         fileName,
         featureTypes = [FeatureType.FORMS, FeatureType.TABLES],
@@ -260,11 +290,17 @@ export class DocTrainService {
         }
     }
 
+    /**
+     * Splits a multi-page PDF into single-page PDFs and triggers asynchronous Textract and SQS processing.
+     * @param file PDF file to split.
+     * @param description Context description.
+     * @param user User performing the operation.
+     */
     async splitPdfFiles(file: Express.Multer.File, description: string, user: any): Promise<void> {
         const knex = this.databaseService.getKnex();
         const filePath = path.resolve(file.path);
         try {
-            const fileData = fs.readFileSync(filePath);
+            const fileData = await fs.readFile(filePath);
             const pdfDoc = await PDFDocument.load(fileData);
             const totalPages = pdfDoc.getPageCount();
             const sourceFileName = `${Date.now()}-${file.originalname}`;
@@ -317,7 +353,7 @@ export class DocTrainService {
                         generated_content: null,
                     });
 
-                    await SqsUtil.sendSQSMessage(
+                    await this.sqsService.sendSQSMessage(
                         {
                             docTrainingId: trainingId.id ?? trainingId,
                             jobId: result.JobId,
@@ -345,10 +381,8 @@ export class DocTrainService {
             await this.s3Client.send(new PutObjectCommand(sourceUploadParams));
             console.log('Uploaded original source file to S3');
 
-            fs.unlink(filePath, (err) => {
-                if (err) console.error('Failed to delete original file:', err);
-                else console.log('Deleted original uploaded file');
-            });
+            await fs.unlink(filePath);
+            console.log('Deleted original uploaded file');
 
         } catch (error) {
             console.error('Error splitting PDF:', error);
@@ -356,7 +390,10 @@ export class DocTrainService {
         }
     }
 
-
+    /**
+     * Retrieves a paginated list of document training records.
+     * @returns Paginated trainings and total count.
+     */
     async getDocTrainings(
         page: number = 1,
         limit: number = 10,
@@ -404,6 +441,11 @@ export class DocTrainService {
         }
     }
 
+    /**
+     * Downloads training Q&A pairs as a CSV file.
+     * @param trainingId ID of the training document.
+     * @param res Express Response object.
+     */
     async downloadTrainingQnA(trainingId: number, res: Response): Promise<void> {
         const knex = this.databaseService.getKnex();
 
@@ -457,7 +499,13 @@ export class DocTrainService {
         }
     }
 
-
+    /**
+     * Retrieves paginated document extracts for a specific training record.
+     * @param page Page number.
+     * @param limit Items per page.
+     * @param trainingId Training record ID.
+     * @returns Extracts, total count, and training info.
+     */
     async getDocExtract(
         page: number = 1,
         limit: number = 10,
@@ -533,6 +581,10 @@ export class DocTrainService {
         }
     }
 
+    /**
+     * Updates the generated content of a document extract.
+     * @param dto Data containing extract ID and new content.
+     */
     async updateDocExtract(dto: DocExtractContenUpdateDto): Promise<void> {
         const knex = this.databaseService.getKnex();
         try {

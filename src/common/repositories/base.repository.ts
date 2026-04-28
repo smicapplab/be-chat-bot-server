@@ -21,7 +21,10 @@ export abstract class BaseRepository<T> {
         let query = this.knex(this.tableName).select('*');
 
         if (options?.orderBy) {
-            query = query.orderBy(options.orderBy, options.order || 'asc');
+            // Basic validation: only allow alphanumeric, underscores, and dots (for table aliases)
+            if (/^[a-z0-9_.]+$/i.test(options.orderBy)) {
+                query = query.orderBy(options.orderBy, options.order || 'asc');
+            }
         }
 
         if (options?.limit) {

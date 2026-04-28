@@ -11,6 +11,9 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as sharp from 'sharp';
 
+/**
+ * Service for verifying identity documents and performing face matching using AWS Textract and Rekognition.
+ */
 @Injectable()
 export class IdVerificationService {
     private textract: TextractClient;
@@ -33,6 +36,12 @@ export class IdVerificationService {
         });
     }
 
+    /**
+     * Verifies a Philippine National ID and compares the face on the ID with a selfie if provided.
+     * @param idBuffer Buffer containing the ID image.
+     * @param selfieBuffer Optional buffer containing a selfie image for face matching.
+     * @returns Object containing verification results and face similarity scores.
+     */
     async verifyIdAndCompareFace(idBuffer: Buffer, selfieBuffer?: Buffer) {
         if (!idBuffer) {
             throw new Error('idBuffer must be provided');
@@ -92,6 +101,11 @@ export class IdVerificationService {
         };
     }
 
+    /**
+     * Internal method to verify if an image is a valid Philippine National ID using AWS Textract.
+     * @param image Buffer of the image to analyze.
+     * @returns Object with validity status and confidence score.
+     */
     private async verifyPhilSysId(image: Buffer): Promise<{ isValid: boolean; confidence: number }> {
         const command = new AnalyzeDocumentCommand({
             Document: { Bytes: image },
@@ -127,6 +141,11 @@ export class IdVerificationService {
         return { isValid, confidence };
     }
 
+    /**
+     * Extracts the face region from an ID image using AWS Rekognition and Sharp.
+     * @param image Buffer of the ID image.
+     * @returns Buffer of the cropped face or null if no face detected.
+     */
     private async extractIdFace(image: Buffer): Promise<Buffer | null> {
         const detect = await this.rekognition.send(
             new DetectFacesCommand({
@@ -155,6 +174,12 @@ export class IdVerificationService {
         return cropped;
     }
 
+    /**
+     * Compares two faces using AWS Rekognition.
+     * @param source Buffer of the source face image (e.g., selfie).
+     * @param target Buffer of the target face image (e.g., face from ID).
+     * @returns Similarity score or null if no match.
+     */
     private async compareFaces(source: Buffer, target: Buffer): Promise<number | null> {
         const result = await this.rekognition.send(
             new CompareFacesCommand({
