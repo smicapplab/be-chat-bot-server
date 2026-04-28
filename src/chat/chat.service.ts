@@ -91,7 +91,7 @@ export class ChatService {
             ).join('\n\n');
 
             const response = await this.openai.chat.completions.create({
-                model: 'gpt-3.5-turbo',
+                model: 'gpt-4o-mini',
                 messages: [
                     {
                         role: 'system',
@@ -154,13 +154,14 @@ export class ChatService {
 
         const context = messages
             ?.filter((msg) => msg.role === 'user' || msg.role === 'assistant')
+            .slice(-5) // Limit context to last 5 messages
             .map((msg) => this.cleanText(msg.content))
             .join(' [SEP] ') || '';
 
         const input = context ? `${context} [SEP] ${this.cleanText(newMessage)}` : this.cleanText(newMessage);
 
         const newMessageEmbedding = await this.generateEmbedding(input, '');
-        const embeddingString = `ARRAY[${newMessageEmbedding.join(', ')}]::vector(1024)`;
+        const embeddingArrayString = `[${newMessageEmbedding.join(', ')}]`;
         const knex = this.databaseService.getKnex();
 
         try {
@@ -170,14 +171,14 @@ export class ChatService {
                     'question_text',
                     'answer_text',
                     'source',
-                    knex.raw(`1 - (embedding <=> ${embeddingString}) as similarity`),
-                    knex.raw(`GREATEST(similarity(lower(question_text), lower(?)), similarity(lower(answer_text), lower(?))) as text_similarity`, [newMessage, newMessage]),
-                    knex.raw(`GREATEST(1 - EXTRACT(EPOCH FROM NOW() - created_at)/604800, 0) as recency_score`),
+                    knex.raw('1 - (embedding <=> ?::vector(1024)) as similarity', [embeddingArrayString]),
+                    knex.raw('GREATEST(similarity(lower(question_text), lower(?)), similarity(lower(answer_text), lower(?))) as text_similarity', [newMessage, newMessage]),
+                    knex.raw('GREATEST(1 - EXTRACT(EPOCH FROM NOW() - created_at)/604800, 0) as recency_score'),
                     knex.raw(`(
-              0.65 * (1 - (embedding <=> ${embeddingString})) +
+              0.65 * (1 - (embedding <=> ?::vector(1024))) +
               0.25 * GREATEST(similarity(lower(question_text), lower(?)), similarity(lower(answer_text), lower(?))) +
               0.10 * GREATEST(1 - EXTRACT(EPOCH FROM NOW() - created_at)/604800, 0)
-          ) as relevance`, [newMessage, newMessage])
+          ) as relevance`, [embeddingArrayString, newMessage, newMessage])
                 );
 
             // Conditionally add project_id filter
@@ -254,6 +255,7 @@ export class ChatService {
             }
 
             const embedding = await this.generateEmbedding(question, answer)
+            const embeddingArrayString = `[${embedding.join(',')}]`;
 
             await knex('chat').insert({
                 topic,
@@ -264,7 +266,7 @@ export class ChatService {
                 project_id: projectId ?? null,
                 user_id: userId ?? null,
                 session_id: finalSessionId,
-                embedding: knex.raw(`ARRAY[${embedding.join(',')}]::vector(1024)`),
+                embedding: knex.raw('?::vector(1024)', [embeddingArrayString]),
                 personality,
             });
 
@@ -350,12 +352,12 @@ export class ChatService {
         try {
             const input = this.cleanText(keyword);
             const keywordEmbedding = await this.generateEmbedding(input, '');
-            const embeddingString = `ARRAY[${keywordEmbedding.join(', ')}]::vector(1024)`;
+            const embeddingArrayString = `[${keywordEmbedding.join(', ')}]`;
 
             const results = await knex('chat')
                 .select('session_id')
                 .groupBy('session_id')
-                .orderByRaw(`MIN(embedding <=> ${embeddingString})`) // most similar first
+                .orderByRaw('MIN(embedding <=> ?::vector(1024))', [embeddingArrayString]) // most similar first
                 .limit(20);
 
             const sessionIds = results.map(r => r.session_id);
@@ -372,7 +374,7 @@ export class ChatService {
 
     async getAllSessions(searchText: string, page: number): Promise<any[]> {
         const knex = this.databaseService.getKnex();
-        let embeddingString = null;
+        let embeddingArrayString = null;
         const limit = 10;
         const offset = (page - 1) * limit;
 
@@ -380,7 +382,7 @@ export class ChatService {
             if (searchText && searchText.trim()) {
                 const cleanedSearchText = this.cleanText(searchText);
                 const newMessageEmbedding = await this.generateEmbedding(cleanedSearchText, '');
-                embeddingString = `ARRAY[${newMessageEmbedding.join(', ')}]::vector(1024)`;
+                embeddingArrayString = `[${newMessageEmbedding.join(', ')}]`;
             }
 
             let chatQuery = knex
@@ -391,9 +393,9 @@ export class ChatService {
                 )
                 .from('chat');
 
-            if (embeddingString) {
+            if (embeddingArrayString) {
                 chatQuery.select(
-                    knex.raw(`1 - (chat.embedding <=> ${embeddingString}) as vector_similarity`),
+                    knex.raw('1 - (chat.embedding <=> ?::vector(1024)) as vector_similarity', [embeddingArrayString]),
                     knex.raw(`GREATEST(
                         similarity(lower(chat.question_text), lower(?)), 
                         similarity(lower(chat.answer_text), lower(?))
@@ -410,12 +412,12 @@ export class ChatService {
                 )
                 .from('session')
                 .join('app_user', 'app_user.id', '=', 'session.user_id')
-                .joinRaw(`LEFT JOIN (${chatQuery.toString()}) as chat_metrics ON session.id = chat_metrics.session_id`);
+                .leftJoin(chatQuery.as('chat_metrics'), 'session.id', 'chat_metrics.session_id');
 
-            if (embeddingString) {
+            if (embeddingArrayString) {
                 query.select(
-                    knex.raw(`MAX(chat_metrics.vector_similarity) as similarity`),
-                    knex.raw(`MAX(chat_metrics.text_similarity) as textSimilarity`),
+                    knex.raw('MAX(chat_metrics.vector_similarity) as similarity'),
+                    knex.raw('MAX(chat_metrics.text_similarity) as textSimilarity'),
                     knex.raw(`(
                         0.7 * MAX(chat_metrics.vector_similarity) +
                         0.3 * MAX(chat_metrics.text_similarity)
@@ -430,7 +432,7 @@ export class ChatService {
                 'author'
             );
 
-            if (embeddingString) {
+            if (embeddingArrayString) {
                 query.orderBy('relevance', 'desc');
             } else {
                 query.orderBy('session.created_at', 'desc');
@@ -438,10 +440,10 @@ export class ChatService {
 
             query.limit(limit).offset(offset);
 
-            let sessions = await query;
+            const sessions = await query;
 
             const threshold = 0.5;
-            if (embeddingString) {
+            if (embeddingArrayString) {
                 return sessions.filter(q => {
                     const relevanceValue = parseFloat(String(q.relevance || 0));
                     return !isNaN(relevanceValue) && relevanceValue >= threshold;
@@ -449,7 +451,6 @@ export class ChatService {
             }
 
             return sessions;
-
         } catch (error) {
             console.error('Error in getAllSessions:', error);
             throw error;

@@ -1,4 +1,5 @@
 import { Injectable, OnApplicationShutdown, OnModuleDestroy } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import Knex from 'knex';
 import type { Knex as KnexType } from 'knex';
 import knexConfig from '../../knexfile';
@@ -9,13 +10,13 @@ let cachedKnex: KnexType | null = null;
 export class DatabaseService implements OnModuleDestroy, OnApplicationShutdown {
     private knex: KnexType;
 
-    constructor() {
+    constructor(private readonly configService: ConfigService) {
         this.initKnex();
     }
 
     private initKnex() {
         if (!cachedKnex) {
-            const env = process.env.NODE_ENV || 'development';
+            const env = this.configService.get<string>('NODE_ENV') || 'development';
             try {
                 cachedKnex = Knex(knexConfig[env]);
                 console.log(`Knex connection established in ${env} mode`);

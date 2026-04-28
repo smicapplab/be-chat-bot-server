@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
@@ -14,7 +15,17 @@ import { DocTrainModule } from './doc-train/doc-train.module';
 import { IdVerificationModule } from './id-verification/id-verification.module';
 
 @Module({
-  imports: [AuthModule, DatabaseModule, UploadModule, ChatModule, ProjectModule, UserModule, DocTrainModule, IdVerificationModule],
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    AuthModule,
+    DatabaseModule,
+    UploadModule,
+    ChatModule,
+    ProjectModule,
+    UserModule,
+    DocTrainModule,
+    IdVerificationModule
+  ],
   controllers: [AppController, AuthController],
   providers: [AppService, ProjectService],
 })

@@ -170,29 +170,39 @@ export class DocTrainService {
             const { value: fullText } = await mammoth.extractRawText({ buffer: fileData });
             const chunks = this.splitTextForOpenAI(fullText, 3000);
 
-            let docSummary: string;
+            let docSummary: string = "";
             for (let i = 0; i < chunks.length; i++) {
-                const { summary, qa } = await this.processDocument(chunks[i], description);
-                if (!docSummary) {
-                    docSummary = summary
-                }
+                try {
+                    const result = await this.processDocument(chunks[i], description);
+                    if (!result) continue;
 
-                await knex('doc_extract')
-                    .insert({
-                        doc_training_id: trainingId.id ?? trainingId,
-                        user_id: user.id,
-                        job_id: `doc-${Date.now()}-${i + 1}`,
-                        status: 'DONE',
-                        summary,
-                        file_name: sourceFileName,
-                        generated_content: knex.raw('?::jsonb', [JSON.stringify(qa)]),
-                        blocks: null,
-                    })
+                    const { summary, qa } = result;
+                    if (!docSummary) {
+                        docSummary = summary;
+                    }
+
+                    await knex('doc_extract')
+                        .insert({
+                            doc_training_id: trainingId.id ?? trainingId,
+                            user_id: user.id,
+                            job_id: `doc-${Date.now()}-${i + 1}`,
+                            status: 'DONE',
+                            summary,
+                            file_name: sourceFileName,
+                            generated_content: knex.raw('?::jsonb', [JSON.stringify(qa)]),
+                            blocks: null,
+                        });
+                } catch (error) {
+                    console.error(`Error processing chunk ${i + 1}:`, error);
+                }
             }
 
             await knex('doc_training')
                 .where('id', trainingId.id ?? trainingId)
-                .update({ stage: 'DONE' });
+                .update({ 
+                    stage: 'DONE',
+                    summary: docSummary || 'Summary not available'
+                });
 
             fs.unlinkSync(filePath);
             console.log("Document processed...")

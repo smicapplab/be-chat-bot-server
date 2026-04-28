@@ -8,25 +8,30 @@ import {
     CompareFacesCommand,
 } from '@aws-sdk/client-rekognition';
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import * as sharp from 'sharp';
 
 @Injectable()
 export class IdVerificationService {
-    private textract = new TextractClient({
-        region: 'us-east-1',
-        credentials: {
-            accessKeyId: process.env.PRI_AWS_ACCESS_KEY,
-            secretAccessKey: process.env.PRI_AWS_SECRET_KEY,
-        },
-    });
+    private textract: TextractClient;
+    private rekognition: RekognitionClient;
 
-    private rekognition = new RekognitionClient({
-        region: process.env.AWS_REGION || 'us-east-1',
-        credentials: {
-            accessKeyId: process.env.PRI_AWS_ACCESS_KEY!,
-            secretAccessKey: process.env.PRI_AWS_SECRET_KEY!,
-        },
-    });
+    constructor(private readonly configService: ConfigService) {
+        const credentials = {
+            accessKeyId: this.configService.get<string>('PRI_AWS_ACCESS_KEY')!,
+            secretAccessKey: this.configService.get<string>('PRI_AWS_SECRET_KEY')!,
+        };
+
+        this.textract = new TextractClient({
+            region: this.configService.get<string>('AWS_REGION') || 'us-east-1',
+            credentials,
+        });
+
+        this.rekognition = new RekognitionClient({
+            region: this.configService.get<string>('AWS_REGION') || 'us-east-1',
+            credentials,
+        });
+    }
 
     async verifyIdAndCompareFace(idBuffer: Buffer, selfieBuffer?: Buffer) {
         if (!idBuffer) {

@@ -86,7 +86,7 @@ export class UploadService {
     private async processCsvDataInBackground(projectId: number, data: Uint8Array, uploadHistory: any, userId: number) {
         const knex = this.databaseService.getKnex();
         try {
-            const csvBuffer = Buffer.from(data); // If it's already a Uint8Array
+            const csvBuffer = Buffer.from(data);
             const parser = parse(csvBuffer, {
                 columns: true,
                 skip_empty_lines: true,
@@ -95,46 +95,69 @@ export class UploadService {
             });
 
             let line = 1;
+            const batchSize = 50;
+            let currentBatch = [];
+
             for await (const record of parser) {
                 const { question, answer, stage, topic, source } = record;
 
                 if (question && answer) {
-                    if (["question", "query"].includes(question) || answer === "answer") {
-                    } else {
-                        console.log(line++, " : ", question)
-                        const embedding: number[] = await this.generateEmbedding(question, answer);
-                        await knex('question').insert({
-                            question_text: question,
-                            answer_text: answer,
-                            embedding: knex.raw(`ARRAY[${embedding.join(',')}]::vector(1024)`),
-                            upload_id: uploadHistory.id,
-                            created_by: userId,
-                            updated_by: userId,
-                            project_id: projectId,
-                            ...(stage ? { stage } : {}),
-                            ...(topic ? { topic } : {}),
-                            ...(source ? { source } : {}),
-                        });
+                    // Skip header-like rows
+                    if (["question", "query"].includes(question.toLowerCase()) || ["answer"].includes(answer.toLowerCase())) {
+                        continue;
+                    }
 
+                    currentBatch.push({ question, answer, stage, topic, source });
+
+                    if (currentBatch.length >= batchSize) {
+                        await this.processBatch(projectId, currentBatch, uploadHistory.id, userId, knex);
+                        console.log(`Processed ${line} lines...`);
+                        line += currentBatch.length;
+                        currentBatch = [];
                     }
                 }
             }
 
+            if (currentBatch.length > 0) {
+                await this.processBatch(projectId, currentBatch, uploadHistory.id, userId, knex);
+                line += currentBatch.length;
+            }
+
             await knex('upload_history')
-                .update({
-                    status: 'Done'
-                })
-                .where("id", uploadHistory.id)
+                .update({ status: 'Done' })
+                .where("id", uploadHistory.id);
+
+            console.log(`Successfully processed total ${line - 1} lines.`);
 
         } catch (error) {
             await knex('upload_history')
-                .update({
-                    status: 'Errored'
-                })
-                .where("id", uploadHistory.id)
+                .update({ status: 'Errored' })
+                .where("id", uploadHistory.id);
 
             console.error('Error processing CSV in background:', error.message);
         }
+    }
+
+    private async processBatch(projectId: number, batch: any[], uploadId: number, userId: number, knex: any) {
+        const rowsToInsert = await Promise.all(batch.map(async (item) => {
+            const embedding: number[] = await this.generateEmbedding(item.question, item.answer);
+            const embeddingArrayString = `[${embedding.join(',')}]`;
+            
+            return {
+                question_text: item.question,
+                answer_text: item.answer,
+                embedding: knex.raw('?::vector(1024)', [embeddingArrayString]),
+                upload_id: uploadId,
+                created_by: userId,
+                updated_by: userId,
+                project_id: projectId,
+                ...(item.stage ? { stage: item.stage } : {}),
+                ...(item.topic ? { topic: item.topic } : {}),
+                ...(item.source ? { source: item.source } : {}),
+            };
+        }));
+
+        await knex('question').insert(rowsToInsert);
     }
 
     cleanText(input?: string): string {
@@ -149,12 +172,12 @@ export class UploadService {
     ): Promise<{ questions: QuestionResponseDto[]; total: number }> {
         try {
             const knex = this.databaseService.getKnex();
-            let embeddingString = null;
+            let embeddingArrayString = null;
             
             if (searchText && searchText.trim()) {
                 const cleanedSearchText = this.cleanText(searchText);
                 const newMessageEmbedding = await this.generateEmbedding(cleanedSearchText, '');
-                embeddingString = `ARRAY[${newMessageEmbedding.join(', ')}]::vector(1024)`;
+                embeddingArrayString = `[${newMessageEmbedding.join(', ')}]`;
             }
     
             let baseQuery = knex('upload_history')
@@ -169,20 +192,20 @@ export class UploadService {
                 answer: 'question.answer_text',
             });
             
-            if (embeddingString) {
+            if (embeddingArrayString) {
                 query = query.select({
-                    similarity: knex.raw(`1 - (embedding <=> ${embeddingString})`),
+                    similarity: knex.raw('1 - (embedding <=> ?::vector(1024))', [embeddingArrayString]),
                     textSimilarity: knex.raw(`GREATEST(
                         similarity(lower(question_text), lower(?)), 
                         similarity(lower(answer_text), lower(?))
                     )`, [searchText, searchText]),
                     relevance: knex.raw(`(
-                        0.7 * (1 - (embedding <=> ${embeddingString})) +
+                        0.7 * (1 - (embedding <=> ?::vector(1024))) +
                         0.3 * GREATEST(
                             similarity(lower(question_text), lower(?)), 
                             similarity(lower(answer_text), lower(?))
                         )
-                    )`, [searchText, searchText])
+                    )`, [embeddingArrayString, searchText, searchText])
                 });
 
                 query = query.orderBy('relevance', 'desc');
@@ -205,7 +228,7 @@ export class UploadService {
             const threshold = 0.3; 
             let filteredQuestions = questions;
             
-            if (embeddingString) {
+            if (embeddingArrayString) {
                 filteredQuestions = questions.filter(q => {
                     if ('relevance' in q && q.relevance !== undefined) {
                         const relevanceValue = typeof q.relevance === 'number'
@@ -224,7 +247,7 @@ export class UploadService {
             console.log(`Found ${total} questions, returning page ${page} (${filteredQuestions.length} items)`);
             return {
                 questions: filteredQuestions,
-                total: embeddingString ? filteredQuestions.length : total
+                total: embeddingArrayString ? filteredQuestions.length : total
             };
         } catch (error) {
             console.error("Error in getUploadQuestions:", error);

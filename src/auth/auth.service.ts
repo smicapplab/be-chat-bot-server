@@ -4,6 +4,7 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { DatabaseService } from 'src/database/database.service';
 import { UserRequestDto } from './dto/user-request.dto';
 import { CaseUtil } from 'src/utils/case-util';
@@ -16,6 +17,7 @@ export class AuthService {
   constructor(
     private readonly jwtService: JwtService,
     private readonly databaseService: DatabaseService,
+    private readonly configService: ConfigService,
   ) { }
 
   async authenticateSocial(dto: UserRequestDto): Promise<{ success: boolean; jwt: string }> {
@@ -45,7 +47,7 @@ export class AuthService {
         throw new UnauthorizedException('Account deactivated. For assistance or reactivation, please contact support.');
       }
 
-      //Convert Postgres array syntax to JS array
+      // Convert Postgres array syntax to JS array
       if (typeof user.provider === 'string') {
         user.provider = user.provider
           .replace(/^{|}$/g, '')
@@ -53,9 +55,19 @@ export class AuthService {
           .map((p: string) => p.trim());
       }
 
-      const payload = CaseUtil.keysToCamelCase(user);
+      const camelCaseUser = CaseUtil.keysToCamelCase(user);
+      
+      // Minimize JWT payload to non-sensitive identifiers
+      const payload = {
+        id: camelCaseUser.id,
+        email: camelCaseUser.email,
+        firstName: camelCaseUser.firstName,
+        lastName: camelCaseUser.lastName,
+        roleName: camelCaseUser.roleName,
+      };
+
       const jwt = this.jwtService.sign(payload, {
-        secret: process.env.JWT_SECRET,
+        secret: this.configService.get<string>('JWT_SECRET'),
       });
 
       return { success: true, jwt };
@@ -100,7 +112,7 @@ export class AuthService {
         throw new UnauthorizedException('Account deactivated. For assistance or reactivation, please contact support.');
       }
 
-      //Convert Postgres array syntax to JS array
+      // Convert Postgres array syntax to JS array
       if (typeof user.provider === 'string') {
         user.provider = user.provider
           .replace(/^{|}$/g, '')
@@ -108,19 +120,28 @@ export class AuthService {
           .map((p: string) => p.trim());
       }
 
+      const camelCaseUser = CaseUtil.keysToCamelCase(user);
 
-      // Exclude password in jwt
-      delete user.password;
+      // Minimize JWT payload to non-sensitive identifiers
+      const payload = {
+        id: camelCaseUser.id,
+        email: camelCaseUser.email,
+        firstName: camelCaseUser.firstName,
+        lastName: camelCaseUser.lastName,
+        roleName: camelCaseUser.roleName,
+      };
 
       // Generate JWT
-      const payload = CaseUtil.keysToCamelCase(user);
       const jwt = this.jwtService.sign(payload, {
-        secret: process.env.JWT_SECRET,
+        secret: this.configService.get<string>('JWT_SECRET'),
       });
 
       return { success: true, jwt };
     } catch (error) {
-      console.error(error)
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+      console.error(error);
       throw new UnauthorizedException('The username or password you entered is incorrect. Please try again.');
     }
   }
@@ -169,7 +190,8 @@ export class AuthService {
       // Generate reset code and expiration
       const resetCode = randomBytes(5).toString('hex');
       const expireAt = new Date(Date.now() + (24 * 60 * 60 * 1000));
-      const resetUrl = `${process.env.CHAT_ADMIN_URL}/change-password/${resetCode}`;
+      const chatAdminUrl = this.configService.get<string>('CHAT_ADMIN_URL');
+      const resetUrl = `${chatAdminUrl}/change-password/${resetCode}`;
 
       // Upsert password_reset entry
       const existing = await knex('password_reset').where('user_id', user.id).first();

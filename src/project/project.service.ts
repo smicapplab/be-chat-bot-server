@@ -86,15 +86,15 @@ export class ProjectService {
                 .update({
                     title: dto.title,
                     status: dto.status,
-                    service_type: dto.serviceType
-                }).returning(['id', 'title']);
+                    service_type: dto.serviceType,
+                    description: dto.description
+                }).returning(['id', 'title', 'status', 'service_type', 'description']);
 
             if (!result || result.length === 0) {
                 throw new Error('Project not found or update failed');
             }
 
             return result[0];
-            return { id: 0, title: "" }
         } catch (error) {
             throw error;
         }

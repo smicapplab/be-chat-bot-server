@@ -1,15 +1,38 @@
+import { IsString, IsNotEmpty, IsOptional, IsNumber } from 'class-validator';
 
 export class AddProjectDto {
+    @IsString()
+    @IsNotEmpty()
     title: string;
+
+    @IsString()
+    @IsNotEmpty()
     serviceType: string;
+
+    @IsString()
+    @IsNotEmpty()
     description: string;
 }
 
 export class UpdateProjectDto {
+    @IsNumber()
+    @IsNotEmpty()
     id: number;
+
+    @IsString()
+    @IsNotEmpty()
     title: string;
+
+    @IsOptional()
+    @IsString()
     status?: string;
+
+    @IsOptional()
+    @IsString()
     serviceType?: string;
+
+    @IsString()
+    @IsNotEmpty()
     description: string;
 }
 

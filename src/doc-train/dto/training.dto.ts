@@ -1,3 +1,6 @@
+import { IsString, IsNotEmpty, IsNumber, IsArray, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+
 export class TrainingResponseDto {
     id: number;
     stage: "INIT" | "DONE" | "PENDING";
@@ -20,12 +23,23 @@ export class DocExtractDto {
 }
 
 export class DocExtractContentDto {
+  @IsString()
+  @IsNotEmpty()
   q: string;
+
+  @IsString()
+  @IsNotEmpty()
   a: string;
 }
 
-export interface DocExtractContenUpdateDto {
+export class DocExtractContenUpdateDto {
+  @IsNumber()
+  @IsNotEmpty()
   docExtractId: number;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => DocExtractContentDto)
   content: DocExtractContentDto[];
 }
 
