@@ -4,11 +4,11 @@ import { Type } from 'class-transformer';
 export class SearchUserDto {
     @IsOptional()
     @IsString()
-    name: string;
+    name?: string;
 
     @IsOptional()
     @IsNumber()
-    roleId: number;
+    roleId?: number;
 
     @IsOptional()
     @IsNumber()
