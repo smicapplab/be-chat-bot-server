@@ -5,13 +5,13 @@ import OpenAI from 'openai';
 import { CaseUtil } from 'src/utils/case-util';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class ChatService {
     private model;
     private modelInitialized = false;
 
-    private openaiKey: string;
     private openai: OpenAI;
 
     private defaultResponse = `Oops! It seems I'm having trouble generating a response at the moment. 
@@ -22,14 +22,14 @@ export class ChatService {
         private readonly databaseService: DatabaseService,
         @Inject(CACHE_MANAGER)
         private cacheManager: Cache,
+        private readonly configService: ConfigService,
     ) {
         this.initializeModel().catch((err) => {
             console.error('Model initialization failed:', err);
         });
 
-        this.openaiKey = process.env.OPENAI_API_KEY
         this.openai = new OpenAI({
-            apiKey: this.openaiKey, // Ensure this environment variable is set
+            apiKey: this.configService.get<string>('OPENAI_API_KEY'),
         });
     }
 
